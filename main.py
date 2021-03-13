@@ -60,11 +60,11 @@ async def app_supervisor(app_config: AppConfig, queue: asyncio.Queue) -> None:
         await queue.put(AppFailed())
 
     except asyncio.CancelledError:
-        if app:
-            logger.error(f"Killing {app_config.display_name}")
+        if app and app.returncode is None:
+            logger.error(f"Terminating {app_config.display_name}")
             app.terminate()
             await app.wait()
-            logger.error(f"Killed {app_config.display_name}")
+            logger.error(f"Terminated {app_config.display_name}")
 
     except Exception as e:
         logger.exception("Unexpected failure")
