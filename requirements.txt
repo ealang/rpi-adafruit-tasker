@@ -1,0 +1,4 @@
+adafruit-circuitpython-rgb-display
+spidev
+Pillow
+numpy
