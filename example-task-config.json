@@ -1,0 +1,32 @@
+[
+    {
+        "display_name": "sleep",
+        "binary": "/usr/bin/sleep",
+        "args": ["60"]
+    },
+    {
+        "display_name": "fluidsynth",
+        "binary": "/usr/bin/fluidsynth",
+        "args": [
+            "-a", "alsa",
+            "/home/pi/soundfonts/Chateau_Grand-v1.8.sf2",
+            "--audio-bufsize", "64",
+            "--audio-bufcount", "3"
+        ]
+    },
+    {
+        "display_name": "z-synth",
+        "binary": "/home/pi/git/z-synth/z-synth",
+        "args": []
+    },
+    {
+        "display_name": "true",
+        "binary": "/usr/bin/true",
+        "args": []
+    },
+    {
+        "display_name": "false",
+        "binary": "/usr/bin/false",
+        "args": []
+    }
+]
