@@ -6,37 +6,49 @@ Use buttons to switch apps. Text color indicates the status of the selected app.
 
 ![screenshot](screenshot.png)
 
-# Run Instructions
+# Dev Instructions
+
+Can run on real hardware, or with matplotlib as the display/input driver.
 
 Create a virtual environment and install dependencies:
 ```
 python3 -m venv venv
 source venv/bin/activate
+
+# option 1: install dependencies for real hardware
 pip install -r requirements.txt.freeze
+# option 2: install dependencies for matplotlib virtual mode
+pip install -r requirements-matplotlib.txt
 ```
 
-Run:
+Run (remove `--virtual` to run on real hardware):
 ```
-python main.py example-task-config.json
+python -m tasker.main example-task-config.json --virtual
 ```
 
 # Launch on Startup
 
 Example of how to run at startup using [Supervisor](http://supervisord.org/index.html).
 
-1. Install Supervisor
+1. Install app into a virtual environment
+```
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt.freeze
+python setup.py install
+```
+
+2. Install Supervisor
 ```
 apt install supervisor
 ```
 
-2. Add a config file
-
-Note: this example runs the script from the same python virtual environment as above. Update the paths for your system.
+3. Add a config file
 
 `/etc/supervisor/conf.d/rpi_adafruit_tasker.conf`:
 ```
 [program:rpi_adafruit_tasker]
-command=/home/pi/git/rpi-adafruit-tasker/venv/bin/python /home/pi/git/rpi-adafruit-tasker/main.py /home/pi/git/rpi-adafruit-tasker/example-task-config.json
+command=/home/pi/git/rpi-adafruit-tasker/venv/bin/tasker /home/pi/git/rpi-adafruit-tasker/example-task-config.json
 stderr_logfile=/var/log/rpi_adafruit_tasker.err.log
 autostart=true
 ```

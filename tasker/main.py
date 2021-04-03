@@ -7,33 +7,29 @@ from enum import Enum
 from typing import List
 
 from PIL import Image, ImageDraw, ImageFont
-
-import digitalio
-import board
-import adafruit_rgb_display.st7789 as st7789
-from adafruit_rgb_display.rgb import color565
+from .app_config import AppConfig
+from .drivers.display import Display
+from .messages import (
+    AppExited,
+    AppFailed,
+    AppStarted,
+    ButtonPressed,
+)
 
 
 logger = logging.getLogger(__name__)
 
 
-@dataclasses.dataclass
-class AppConfig:
-    display_name: str
-    binary: str
-    args: List[str]
-    retry_count: int = 5
-    retry_delay: float = 2
+def _construct_matplotlib_driver(width: int, height: int, queue: asyncio.Queue) -> Display:
+    from .drivers.matplotlib_display import MatplotlibDisplay
+    return MatplotlibDisplay(width, height, queue)
 
 
-class Message: pass
-class AppStarted(Message): pass
-class AppExited(Message): pass
-class AppFailed(Message): pass
-class ButtonPressed(Message):
-    def __init__(self, button: int):
-        super().__init__()
-        self.button = button
+def _construct_rpi_driver(width, height, queue: asyncio.Queue) -> Display:
+    from .drivers.st7789_display import ST7789Display
+    from .drivers.st7789_input import button_poll_task
+    asyncio.create_task(button_poll_task(queue))
+    return ST7789Display(width, height)
 
 
 async def app_supervisor(app_config: AppConfig, queue: asyncio.Queue) -> None:
@@ -71,64 +67,7 @@ async def app_supervisor(app_config: AppConfig, queue: asyncio.Queue) -> None:
         await queue.put(AppFailed())
 
 
-async def button_poll_task(queue: asyncio.Queue) -> None:
-    button_a = digitalio.DigitalInOut(board.D23)
-    button_b = digitalio.DigitalInOut(board.D24)
-    button_a.switch_to_input()
-    button_b.switch_to_input()
-     
-    last_a = False
-    last_b = False
-    while True:
-        a = not button_a.value
-        b = not button_b.value
-
-        if a and not last_a:
-            await queue.put(ButtonPressed(0))
-        if b and not last_b:
-            await queue.put(ButtonPressed(1))
-
-        last_a = a
-        last_b = b
-
-        await asyncio.sleep(0.05)
-
-
-class Display:
-    def __init__(self, width: int, height: int):
-        cs_pin = digitalio.DigitalInOut(board.CE0)
-        dc_pin = digitalio.DigitalInOut(board.D25)
-        self.backlight_pin = digitalio.DigitalInOut(board.D22)
-        self.backlight_pin.switch_to_output()
-
-        BAUDRATE = 64000000
-        self.display = st7789.ST7789(
-            board.SPI(),
-            cs=cs_pin,
-            dc=dc_pin,
-            baudrate=BAUDRATE,
-            width=width,
-            height=height,
-            x_offset=0,
-            y_offset=80,  # needed for 240x240 display
-        )
-
-    def image(self, img: Image) -> None:
-        return self.display.image(img)
-
-    def __enter__(self):
-        self.display.fill(color565(0, 0, 0))
-        self.display.init()
-        self.display.rotation = 180
-        self.backlight_pin.value = True
-        return self
-
-    def __exit__(self, *exc):
-        self.backlight_pin.value = False
-        return False
-
-
-async def main(app_configs: List[AppConfig]) -> None:
+async def app(app_configs: List[AppConfig], virtual_driver: bool) -> None:
     width = 240
     height = 240
     fontsize = 24
@@ -198,10 +137,15 @@ async def main(app_configs: List[AppConfig]) -> None:
         )
 
     queue = asyncio.Queue()
-    asyncio.create_task(button_poll_task(queue))
     app_task = start_selected_app()
 
-    with Display(width, height) as display:
+    if virtual_driver:
+        display = _construct_matplotlib_driver(width, height, queue)
+    else:
+        display = _construct_rpi_driver(width, height, queue)
+
+
+    with display:
         while True:
 
             if selection_index >= scroll_index + num_lines:
@@ -228,11 +172,12 @@ async def main(app_configs: List[AppConfig]) -> None:
                 app_state = AppState.OK
 
 
-if __name__ == "__main__":
+def main():
     logging.basicConfig(level="INFO")
 
     parser = argparse.ArgumentParser()
     parser.add_argument("config_path", type=str, help="Path to json config file")
+    parser.add_argument("--virtual", action="store_true", help="Use matplotlib driver for display/input")
     args = parser.parse_args()
 
     with open(args.config_path) as fp:
@@ -241,5 +186,8 @@ if __name__ == "__main__":
             for args in json.load(fp)
         ]
 
-    asyncio.run(main(config))
+    asyncio.run(app(config, args.virtual))
 
+
+if __name__ == "__main__":
+    main()
