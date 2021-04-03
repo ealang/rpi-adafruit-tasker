@@ -53,7 +53,7 @@ stderr_logfile=/var/log/rpi_adafruit_tasker.err.log
 autostart=true
 ```
 
-3. Reload supervisor
+4. Reload supervisor
 
 ```
 sudo supervisorctl reread
