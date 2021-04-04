@@ -14,7 +14,9 @@ from .messages import (
     AppFailed,
     AppStarted,
     ButtonPressed,
+    TaskFinished,
 )
+from .ui_state import UIState
 
 
 logger = logging.getLogger(__name__)
@@ -67,68 +69,22 @@ async def app_supervisor(app_config: AppConfig, queue: asyncio.Queue) -> None:
         await queue.put(AppFailed())
 
 
+async def task_supervisor(app_config: AppConfig, queue: asyncio.Queue) -> None:
+    logger.info(f"Starting {app_config.display_name}")
+    app = await asyncio.create_subprocess_exec(
+        app_config.binary,
+        *app_config.args,
+        stdout=asyncio.subprocess.PIPE,
+    )
+    stdout, _ = await app.communicate()
+
+    logger.info(f"{app_config.display_name} exited with exit code: {app.returncode}")
+    await queue.put(TaskFinished(app.returncode, stdout))
+
+
 async def app(app_configs: List[AppConfig], virtual_driver: bool) -> None:
-    width = 240
-    height = 240
-    fontsize = 24
-    line_padding = 3
-    screen_padding = 15
-    line_height = fontsize + line_padding * 2
-    num_lines = max((height - screen_padding * 2) // line_height, 1)
 
-    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", fontsize)
-    image = Image.new("RGB", (width, height))
-    draw = ImageDraw.Draw(image)
-
-    background_color = (0, 0, 0)
-    deselected_text_color = (255, 255, 255)
-    selected_text_color = (0, 0, 0)
-    selected_text_exited_color = (200, 200, 200)
-    selected_text_failed_color = (255, 0, 0)
-    selected_background_color = (255, 255, 255)
-
-    scroll_index = 0
-    selection_index = 0
-
-    class AppState(Enum):
-        OK = 1
-        EXITED = 2
-        FAILED = 3
-
-    app_state = AppState.OK
-
-    def pick_text_color(i):
-        if i != selection_index:
-            return deselected_text_color
-        if app_state == AppState.OK:
-            return selected_text_color
-        if app_state == AppState.EXITED:
-            return selected_text_exited_color
-        return selected_text_failed_color
-
-    def refresh_display() -> None:
-        draw.rectangle((0, 0, width, height), outline=0, fill=background_color)
-
-        y = screen_padding
-        i = scroll_index
-        for app_config in app_configs[scroll_index:scroll_index + num_lines]:
-            selected = i == selection_index
-            if selected:
-                draw.rectangle((0, y, width, y + line_height), outline=0, fill=selected_background_color)
-
-            draw.text(
-                (screen_padding, y),
-                app_config.display_name,
-                font=font,
-                fill=pick_text_color(i),
-            )
-
-            y += line_height
-            i += 1
-
-        display.image(image)
-
-    def start_selected_app() -> asyncio.Task:
+    def start_app(selection_index: int) -> asyncio.Task:
         return asyncio.create_task(
             app_supervisor(
                 app_configs[selection_index],
@@ -136,40 +92,59 @@ async def app(app_configs: List[AppConfig], virtual_driver: bool) -> None:
             ),
         )
 
+    width = 240
+    height = 240
+    fontsize = 24
+
+    image = Image.new("RGB", (width, height))
+    draw = ImageDraw.Draw(image)
+    ui_state = UIState.construct(app_configs, width, height, fontsize)
+
     queue = asyncio.Queue()
-    app_task = start_selected_app()
 
     if virtual_driver:
         display = _construct_matplotlib_driver(width, height, queue)
     else:
         display = _construct_rpi_driver(width, height, queue)
 
+    # Start first app
+    app_task = start_app(ui_state.cursor_index)
+    ui_state = ui_state.on_press_select()
 
     with display:
         while True:
-
-            if selection_index >= scroll_index + num_lines:
-                scroll_index = selection_index - num_lines + 1
-            elif selection_index < scroll_index:
-                scroll_index = selection_index
-
-            refresh_display()
+            ui_state.draw(draw)
+            display.image(image)
 
             msg = await queue.get()
 
             if isinstance(msg, ButtonPressed):
-                direction = -1 if msg.button == 0 else 1
-                selection_index = (selection_index + direction) % len(app_configs)
-                app_task.cancel()
-                await app_task
-                app_task = start_selected_app()
-                app_state = AppState.OK
+                if msg.button == 0:
+                    ui_state = ui_state.on_press_select()
+
+                    # app_task.cancel()
+                    # await app_task
+                    # app_task = start_app(ui_state.cursor_index)
+                    asyncio.create_task(
+                        task_supervisor(
+                            app_configs[ui_state.cursor_index],
+                            queue,
+                        ),
+                    )
+
+
+                elif msg.button == 1:
+                    ui_state = ui_state.on_press_next()
+
             elif isinstance(msg, AppFailed):
-                app_state = AppState.FAILED
+                ui_state = ui_state.on_app_failed()
             elif isinstance(msg, AppExited):
-                app_state = AppState.EXITED
+                ui_state = ui_state.on_app_exited()
             elif isinstance(msg, AppStarted):
-                app_state = AppState.OK
+                ui_state = ui_state.on_app_started()
+            elif isinstance(msg, TaskFinished):
+                print("got", msg.returncode, msg.stdout)
+                ui_state = ui_state.on_display_task(msg.returncode, msg.stdout)
 
 
 def main():
@@ -183,7 +158,7 @@ def main():
     with open(args.config_path) as fp:
         config = [
             AppConfig(**args)
-            for args in json.load(fp)
+            for args in json.load(fp)["mutex_daemons"]
         ]
 
     asyncio.run(app(config, args.virtual))

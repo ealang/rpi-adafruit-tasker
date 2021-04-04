@@ -1,19 +1,38 @@
-[
-    {
-        "display_name": "sleep",
-        "binary": "/usr/bin/sleep",
-        "args": [
-            "3"
-        ]
-    },
-    {
-        "display_name": "example app 1",
-        "binary": "/usr/bin/true",
-        "args": []
-    },
-    {
-        "display_name": "example app 2",
-        "binary": "/usr/bin/false",
-        "args": []
-    }
-]
+{
+    "mutex_daemons": [
+        {
+            "display_name": "echo",
+            "binary": "/usr/bin/echo",
+            "args": ["asdf\nline2 stuff\nline3"]
+        },
+        {
+            "display_name": "sleep",
+            "binary": "/usr/bin/sleep",
+            "args": [
+                "3"
+            ]
+        },
+        {
+            "display_name": "example app 1",
+            "binary": "/usr/bin/true",
+            "args": []
+        },
+        {
+            "display_name": "example app 2",
+            "binary": "/usr/bin/false",
+            "args": []
+        }
+    ],
+    "tasks": [
+        {
+            "display_name": "reboot",
+            "binary": "/usr/sbin/reboot",
+            "args": []
+        },
+        {
+            "display_name": "echo",
+            "binary": "/usr/bin/echo",
+            "args": ["this is a test"]
+        }
+    ]
+}

@@ -17,7 +17,7 @@ async def _periodic_flush(canvas):
 
 
 def _on_keypress(queue, event):
-    if event.key == "up":
+    if event.key == "enter":
         button = 0
     elif event.key == "down":
         button = 1
